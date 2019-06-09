@@ -1,177 +1,181 @@
-import React from 'react';
-import { Dimensions, StyleSheet, Text, View, Image } from 'react-native';
-
-import { MapView, Permissions } from 'expo'
+import React, { Component } from 'react';
+import { Text, View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Location, Permissions, MapView } from 'expo';
+import { Marker, Polyline as PolylineDraw } from 'react-native-maps'
 import Polyline from '@mapbox/polyline'
 
-import { Marker } from 'react-native-maps'
+const TOKEN_URI = 'pk.eyJ1IjoiZ2F0b2d0IiwiYSI6ImNqd29sbm5vcDBwaXA0NHQ1dDlnN2ZodnQifQ.XQRA6EUhIMUOM49MG34uwg'
 
-const locations = require('./locations.json')
-const { width, height } = Dimensions.get('screen')
+export default class Home extends Component {
 
-export default class App extends React.Component {
-  state = {
-    latitude: null,
-    longitude: null,
-    locations: locations
-  }
+    state = {
+        latOrigen: null,
+        lonOrigen: null,
+        coordCargadas: false,
+        coords:[],
+        time: 0,
+        distance: 0
+    };
 
-  async componentDidMount() {
-    const { status } = await Permissions.getAsync(Permissions.LOCATION)
-
-    if (status !== 'granted') {
-      const response = await Permissions.askAsync(Permissions.LOCATION)
+    componentWillMount() {
+        this.getLocation()
     }
-    navigator.geolocation.getCurrentPosition(
-      ({ coords: { latitude, longitude } }) => this.setState({ latitude, longitude }, this.mergeCoords),
-      (error) => console.log('Error:', error)
-    )
 
-    const { locations: [ sampleLocation ] } = this.state
-
-    this.setState({
-      desLatitude: sampleLocation.coords.latitude,
-      desLongitude: sampleLocation.coords.longitude
-    }, this.mergeCoords)
-  }
-
-  mergeCoords = () => {
-    const {
-      latitude,
-      longitude,
-      desLatitude,
-      desLongitude
-    } = this.state
-
-    const hasStartAndEnd = latitude !== null && desLatitude !== null
-
-    if (hasStartAndEnd) {
-      const concatStart = `${latitude},${longitude}`
-      const concatEnd = `${desLatitude},${desLongitude}`
-      this.getDirections(concatStart, concatEnd)
-    }
-  }
-
-  async getDirections(startLoc, desLoc) {
-    try {
-      const resp = await fetch(`https://maps.googleapis.com/maps/api/directions/json?origin=${startLoc}&destination=${desLoc}`)
-      const respJson = await resp.json();
-      const response = respJson.routes[0]
-      const distanceTime = response.legs[0]
-      const distance = distanceTime.distance.text
-      const time = distanceTime.duration.text
-      const points = Polyline.decode(respJson.routes[0].overview_polyline.points);
-      const coords = points.map(point => {
-        return {
-          latitude: point[0],
-          longitude: point[1]
+    getLocation = async () => {
+        let { status } = await Permissions.askAsync(Permissions.LOCATION);
+        if (status !== 'granted') {
+            this.setState({
+                errorMessage: 'Dar permisos por favor...',
+            });
         }
-      })
-      this.setState({ coords, distance, time })
-    } catch(error) {
-      console.log('Error: ', error)
+
+        let location = await Location.getCurrentPositionAsync({ enableHighAccuracy: true })
+        const { latitude, longitude } = location.coords
+
+        this.setState({
+            latOrigen: latitude,
+            lonOrigen: longitude,
+            coordCargadas: true
+        })
     }
-  }
 
-  onMarkerPress = location => () => {
-    const { coords: { latitude, longitude } } = location
-    this.setState({
-      destination: location,
-      desLatitude: latitude,
-      desLongitude: longitude
-    }, this.mergeCoords)
-  }
-
-  renderMarkers = () => {
-    const { locations } = this.state
-    return (
-      <View>
-        {
-          locations.map((location, idx) => {
-            const {
-              coords: { latitude, longitude }
-            } = location
-            return (
-              <Marker
-                key={idx}
-                coordinate={{ latitude, longitude }}
-                onPress={this.onMarkerPress(location)}
-              />
-            )
+    getDirections = async (origen, destino) => {
+        const uri = `https://api.mapbox.com/directions/v5/mapbox/driving/${origen}%3B${destino}.json?access_token=${TOKEN_URI}&geometries=polyline`
+        try {
+          const resp = await fetch(uri)
+          const respJson = await resp.json()
+          const response = respJson.routes[0]
+          const time = response.duration
+          const distance = response.distance
+          const points = Polyline.decode(respJson.routes[0].geometry)
+          const coords = points.map(point => {
+            return {
+              latitude: point[0],
+              longitude: point[1]
+            }
           })
+          this.setState({ coords, time, distance })
+
+        } catch(error) {
+          console.log('Error: ', error)
         }
-      </View>
-    )
-  }
-
-  render() {
-    const {
-      time,
-      coords,
-      distance,
-      latitude,
-      longitude,
-      destination
-    } = this.state
-
-    if (latitude) {
-      return (
-        <MapView
-          showsUserLocation
-          style={{ flex: 1 }}
-          initialRegion={{
-            latitude,
-            longitude,
-            latitudeDelta: 0.0922,
-            longitudeDelta: 0.0421
-          }}
-        >
-        <View
-          style={{
-            width,
-            paddingTop: 10,
-            alignSelf: 'center',
-            alignItems: 'center',
-            height: height * 0.15,
-            backgroundColor: 'white',
-            justifyContent: 'flex-end',
-          }}>
-          <Text style={{ fontWeight: 'bold' }}>Estimated Time: {time}</Text>
-          <Text style={{ fontWeight: 'bold' }}>Estimated Distance: {distance}</Text>
-        </View>
-        {this.renderMarkers()}
-        <MapView.Polyline
-          strokeWidth={2}
-          strokeColor="red"
-          coordinates={coords}
-        />
-        <Image
-          source={{ uri: destination && destination.image_url }}
-          style={{
-            flex: 1,
-            width: width * 0.95,
-            alignSelf: 'center',
-            height: height * 0.15,
-            position: 'absolute',
-            bottom: height * 0.05
-          }}
-        />
-      </MapView>
-      );
     }
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text>We need your permission!</Text>
-      </View>
-    )
-  }
+
+    elegirDestino = (e) => {
+        const { latitude, longitude } = e.nativeEvent.coordinate
+        const { latOrigen, lonOrigen } = this.state
+
+        const origen = `${new String(lonOrigen).substring(0,8)}%2C${new String(latOrigen).substring(0,8)}`
+        const destino = `${new String(longitude).substring(0,8)}%2C${new String(latitude).substring(0,8)}`
+
+        this.getDirections(origen, destino)
+    }
+
+    borrarRuta = () => {
+        this.setState({
+            coords: [],
+            time: 0,
+            distance: 0
+        })
+    }
+
+    actualizarUbicacion = () => {
+        this.borrarRuta()
+        this.getLocation()
+    }
+
+    render() {
+        if (this.state.coordCargadas) {
+            try{
+                let { latOrigen, lonOrigen, coords, distance, time } = this.state
+
+                return (
+                    <View style={styles.container}>
+                        <MapView
+                            style={styles.map}
+                            initialRegion={{
+                                latitude: latOrigen,
+                                longitude: lonOrigen,
+                                latitudeDelta: 0.0922,
+                                longitudeDelta: 0.0421
+                            }}
+                            onPress={() => console.log('mapa presionado!')}>
+                            <Marker
+                                draggable
+                                title={'Destino'}
+                                coordinate={{ latitude: latOrigen, longitude: lonOrigen + 0.005}}
+                                pinColor={'#519d79'}
+                                onDrag={this.borrarRuta}
+                                onDragEnd={this.elegirDestino}
+                            />
+                            <Marker
+                                title={'Posicion Actual'}
+                                coordinate={{ latitude: latOrigen, longitude: lonOrigen }}
+                            />
+
+                            <PolylineDraw
+                                strokeColor={'rgba(255,0,0,1)'}
+                                onPress={() => console.log('polilinea presionada!')}
+                                strokeWidth={3}
+                                tappable
+                                coordinates={coords}
+                            />
+                        </MapView>
+                        <View>
+                            <Text>Distancia: {Math.round(distance/10)/100}Km</Text>
+                        </View>
+                        <View>
+                            <Text>Tiempo: {Math.round((time / 6)) / 10} min aprox.</Text>
+                        </View>
+                        <View style={styles.buttonContainer}>
+                          <TouchableOpacity
+                            onPress={this.actualizarUbicacion}
+                            style={styles.bubble}>
+                            <Text>Actualizar mi ubicación...</Text>
+                          </TouchableOpacity>
+                        </View>
+                    </View>
+                );
+            }catch(err){
+                console.log(err)
+            }
+        }else{
+            return (
+                <View style={styles.container}>
+                <Text style={styles.paragraph}>Obteniendo Coordenadas...</Text>
+                </View>
+            );
+        }
+    }
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    container: {
+        ...StyleSheet.absoluteFillObject,
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+    },
+    paragraph: {
+        margin: 24,
+        fontSize: 18,
+        textAlign: 'center',
+    },
+    buttonContainer: {
+        flexDirection: 'row',
+        marginVertical: 20,
+        backgroundColor: 'transparent',
+    },
+    bubble: {
+        backgroundColor: 'rgba(255,255,255,0.7)',
+        paddingHorizontal: 18,
+        paddingVertical: 12,
+        borderRadius: 20,
+    },
+    latlng: {
+        width: 200,
+        alignItems: 'stretch',
+    },
+    map: {
+        ...StyleSheet.absoluteFillObject,
+    },
 });
