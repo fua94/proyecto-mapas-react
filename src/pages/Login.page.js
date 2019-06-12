@@ -8,15 +8,20 @@ import {
     TouchableOpacity,
     StatusBar,
     TextInput,
-    CheckBox
+    CheckBox,
+    Alert
 } from 'react-native'
 
 import { createStackNavigator, createAppContainer } from 'react-navigation'
+
+import axios from 'axios'
 
 import SplashPage from './Splash.page'
 import MapClient from './MapClient.page'
 
 const placeholderTextColor = '#bdc3c7'
+
+const BASE_URL = 'http://puceing.edu.ec:15005/FranciscoUlloa/mapas/api/usuarios'
 
 class LoginPage extends Component {
 
@@ -31,8 +36,78 @@ class LoginPage extends Component {
     }
 
     login = () => {
-        alert(`${this.state.user} ${this.state.pass}`)
-        this.props.navigation.navigate('MapClient')
+        const usuario = this.state.user
+        const password = this.state.pass
+
+        if(usuario !== '' && password !== ''){
+
+            const credenciales = {
+                USUARIO: this.state.user,
+                PASSWORD: this.state.pass
+            }
+
+            axios.put(BASE_URL, credenciales).then(response => {
+
+                if(response.data != null){
+                    this.props.navigation.navigate('MapClient')
+                }else{
+                    alert('Usuario no encontrado o contraseña incorecta...')
+                }
+
+            }).catch(error => {
+                alert('Error de conexión')
+            })
+        }
+        else{
+            alert('Los campos no deben estar vacíos!')
+        }
+    }
+
+    register = () => {
+        const usuario = this.state.user
+        const password = this.state.pass
+
+        if(usuario !== '' && password !== ''){
+            Alert.alert(
+                'Mensaje',
+                '¿Desea registrar el usuario?',[
+                    {
+                        text: 'Cancel',
+                        onPress: () => { return },
+                        style: 'cancel',
+                    },
+                    {
+                        text: 'OK',
+                        onPress: () => {
+
+                            const credenciales = {
+                                USUARIO: this.state.user,
+                                PASSWORD: this.state.pass
+                            }
+
+                            axios.post(BASE_URL, credenciales).then(response => {
+
+                                if(response.data != null){
+                                    this.props.navigation.navigate('MapClient')
+                                }else{
+                                    alert('Error registrando el usuario')
+                                }
+
+                            }).catch(error => {
+                                alert('Error de conexión')
+                            })
+                        }
+                    }
+                ],
+                {
+                    cancelable: false
+                }
+            )
+        }
+        else{
+            alert('Los campos no deben estar vacíos!')
+        }
+
     }
 
     render(){
@@ -60,6 +135,7 @@ class LoginPage extends Component {
                         placeholderTextColor={placeholderTextColor}
                         ref={(input) => this.passwordInput = input}
                         onChangeText={(pass) => this.setState({pass})}
+                        autoCapitalize='none'
                         value={this.state.pass}/>
                     <View style={styles.checkBox}>
                         <CheckBox
@@ -72,7 +148,8 @@ class LoginPage extends Component {
                             onPress={this.login}>
                             <Text style={styles.buttonText}>Ingresar</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.button}>
+                        <TouchableOpacity style={styles.button}
+                            onPress={this.register}>
                             <Text style={styles.buttonText}>Registrarme</Text>
                         </TouchableOpacity>
                     </View>
