@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mapas",
-    "slug": "mapas",
+    "name": "mytaxifinder",
+    "slug": "mytaxifinder",
     "privacy": "public",
     "sdkVersion": "32.0.0",
     "platforms": [
@@ -24,6 +24,9 @@
     ],
     "ios": {
       "supportsTablet": true
+    },
+    "android": {
+      "package": "com.puce.mytaxifinder"
     }
   }
 }

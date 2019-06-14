@@ -1,23 +1,31 @@
 import React, { Component } from 'react';
-import { Text, View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text, View, StyleSheet, TouchableOpacity, Alert, AsyncStorage  } from 'react-native';
 import { Location, Permissions, MapView } from 'expo';
 import { Marker, Polyline as PolylineDraw } from 'react-native-maps'
 import Polyline from '@mapbox/polyline'
 
-const TOKEN_URI = 'pk.eyJ1IjoiZ2F0b2d0IiwiYSI6ImNqd29sbm5vcDBwaXA0NHQ1dDlnN2ZodnQifQ.XQRA6EUhIMUOM49MG34uwg'
+import axios from 'axios'
+
+const TOKEN = 'pk.eyJ1IjoiZ2F0b2d0IiwiYSI6ImNqd29sbm5vcDBwaXA0NHQ1dDlnN2ZodnQifQ.XQRA6EUhIMUOM49MG34uwg'
+
+const USUARIOS_URI = 'http://puceing.edu.ec:15005/FranciscoUlloa/mytaxifinder/api/usuarios'
+const RUTAS_URI = 'http://puceing.edu.ec:15005/FranciscoUlloa/mytaxifinder/api/rutas'
 
 export default class Home extends Component {
     static navigationOptions = {
         header: null
     }
-    
+
     state = {
         latOrigen: null,
         lonOrigen: null,
+        latDest: null,
+        lonDest: null,
         coordCargadas: false,
         coords:[],
         time: 0,
-        distance: 0
+        distance: 0,
+        price: 0
     };
 
     componentWillMount() {
@@ -42,8 +50,8 @@ export default class Home extends Component {
         })
     }
 
-    getDirections = async (origen, destino) => {
-        const uri = `https://api.mapbox.com/directions/v5/mapbox/driving/${origen}%3B${destino}.json?access_token=${TOKEN_URI}&geometries=polyline`
+    getDirections = async (origenStr, destinoStr, latDest, lonDest) => {
+        const uri = `https://api.mapbox.com/directions/v5/mapbox/driving/${origenStr}%3B${destinoStr}.json?access_token=${TOKEN}&geometries=polyline`
         try {
           const resp = await fetch(uri)
           const respJson = await resp.json()
@@ -57,7 +65,19 @@ export default class Home extends Component {
               longitude: point[1]
             }
           })
-          this.setState({ coords, time, distance })
+
+          let distancia = Math.round(distance/10)/100
+          let tiempo = Math.round((time/6))/10
+          let precio = Math.round(distancia*60) / 100
+
+          this.setState({
+              coords,
+              time: tiempo,
+              distance: distancia,
+              price: precio,
+              latDest,
+              lonDest
+          })
 
         } catch(error) {
           console.log('Error: ', error)
@@ -68,17 +88,18 @@ export default class Home extends Component {
         const { latitude, longitude } = e.nativeEvent.coordinate
         const { latOrigen, lonOrigen } = this.state
 
-        const origen = `${new String(lonOrigen).substring(0,8)}%2C${new String(latOrigen).substring(0,8)}`
-        const destino = `${new String(longitude).substring(0,8)}%2C${new String(latitude).substring(0,8)}`
+        const origenStr = `${new String(lonOrigen).substring(0,8)}%2C${new String(latOrigen).substring(0,8)}`
+        const destinoStr = `${new String(longitude).substring(0,8)}%2C${new String(latitude).substring(0,8)}`
 
-        this.getDirections(origen, destino)
+        this.getDirections(origenStr, destinoStr, latitude, longitude)
     }
 
     borrarRuta = () => {
         this.setState({
             coords: [],
             time: 0,
-            distance: 0
+            distance: 0,
+            price: 0
         })
     }
 
@@ -87,10 +108,67 @@ export default class Home extends Component {
         this.getLocation()
     }
 
+    confirmarViaje = () => {
+        let { latOrigen, lonOrigen, latDest, lonDest, distance, time, price } = this.state
+
+        Alert.alert(
+            'Mensaje',
+            `¿Desea registrar el viaje por $${this.state.price}?`,[
+                {
+                    text: 'Cancel',
+                    onPress: () => { return },
+                    style: 'cancel',
+                },
+                {
+                    text: 'Aceptar',
+                    onPress: async () => {
+                        try{
+                            const value = await AsyncStorage.getItem('userId')
+
+                            const params = {
+                                USUARIO_ID: parseInt(value.toString()),
+                                ORIGEN_LAT: latOrigen.toString(),
+                                ORIGEN_LONG: lonOrigen.toString(),
+                                DESTINO_LAT: latDest.toString(),
+                                DESTINO_LONG: lonDest.toString(),
+                                PRECIO: price.toString(),
+                                DISTANCIA: distance.toString(),
+                                TIEMPO: time.toString(),
+                                ESTADO: "P"
+                            }
+
+                            //await AsyncStorage.removeItem('userId')
+
+                            axios.post(RUTAS_URI, params).then(response => {
+
+                                if(response.data != null){
+                                    alert('Viaje ingresado, por favor espere su taxi')
+                                }else{
+                                    alert('Error registrando viaje')
+                                }
+
+                            }).catch(error => {
+                                alert('Error de conexión')
+                            })
+
+                        }catch(e){
+                            alert('Error!')
+                        }
+
+
+                    }
+                }
+            ],
+            {
+                cancelable: false
+            }
+        )
+    }
+
     render() {
         if (this.state.coordCargadas) {
             try{
-                let { latOrigen, lonOrigen, coords, distance, time } = this.state
+                let { latOrigen, lonOrigen, coords, distance, time, price } = this.state
 
                 return (
                     <View style={styles.container}>
@@ -101,8 +179,7 @@ export default class Home extends Component {
                                 longitude: lonOrigen,
                                 latitudeDelta: 0.0922,
                                 longitudeDelta: 0.0421
-                            }}
-                            onPress={() => console.log('mapa presionado!')}>
+                            }}>
                             <Marker
                                 draggable
                                 title={'Destino'}
@@ -118,23 +195,26 @@ export default class Home extends Component {
 
                             <PolylineDraw
                                 strokeColor={'rgba(255,0,0,1)'}
-                                onPress={() => console.log('polilinea presionada!')}
                                 strokeWidth={3}
                                 tappable
                                 coordinates={coords}
                             />
                         </MapView>
-                        <View>
-                            <Text>Distancia: {Math.round(distance/10)/100}Km</Text>
-                        </View>
-                        <View>
-                            <Text>Tiempo: {Math.round((time / 6)) / 10} min aprox.</Text>
+                        <View style={styles.info}>
+                            <Text style={styles.textInfo}>Distancia: {distance}</Text>
+                            <Text style={styles.textInfo}>Tiempo: {time}</Text>
+                            <Text style={styles.textInfo}>Precio: {price}</Text>
                         </View>
                         <View style={styles.buttonContainer}>
                           <TouchableOpacity
+                            onPress={this.confirmarViaje}
+                            style={styles.bubble}>
+                            <Text style={styles.buttonText}>Aceptar Viaje :D</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
                             onPress={this.actualizarUbicacion}
                             style={styles.bubble}>
-                            <Text>Actualizar mi ubicación...</Text>
+                            <Text style={styles.buttonText}>Actualizar mi ubicación...</Text>
                           </TouchableOpacity>
                         </View>
                     </View>
@@ -161,18 +241,20 @@ const styles = StyleSheet.create({
     paragraph: {
         margin: 24,
         fontSize: 18,
-        textAlign: 'center',
+        textAlign: 'center'
     },
     buttonContainer: {
-        flexDirection: 'row',
-        marginVertical: 20,
-        backgroundColor: 'transparent',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        marginBottom: 15
     },
     bubble: {
         backgroundColor: 'rgba(255,255,255,0.7)',
         paddingHorizontal: 18,
-        paddingVertical: 12,
         borderRadius: 20,
+        height: 40,
+        justifyContent: 'center',
+        marginTop: 15
     },
     latlng: {
         width: 200,
@@ -181,4 +263,20 @@ const styles = StyleSheet.create({
     map: {
         ...StyleSheet.absoluteFillObject,
     },
+    info: {
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        backgroundColor: 'rgba(255,255,255,0.7)',
+        borderRadius: 20,
+        padding: 15,
+        width: '50%',
+    },
+    textInfo: {
+        textAlign: 'center',
+        fontWeight: 'bold'
+    },
+    buttonText:{
+        textAlign: 'center',
+    }
+
 });

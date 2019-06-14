@@ -9,7 +9,8 @@ import {
     StatusBar,
     TextInput,
     CheckBox,
-    Alert
+    Alert,
+    AsyncStorage
 } from 'react-native'
 
 import { createStackNavigator, createAppContainer } from 'react-navigation'
@@ -21,7 +22,7 @@ import MapClient from './MapClient.page'
 
 const placeholderTextColor = '#bdc3c7'
 
-const BASE_URL = 'http://puceing.edu.ec:15005/FranciscoUlloa/mapas/api/usuarios'
+const BASE_URI = 'http://puceing.edu.ec:15005/FranciscoUlloa/mytaxifinder/api/usuarios'
 
 class LoginPage extends Component {
 
@@ -46,9 +47,10 @@ class LoginPage extends Component {
                 PASSWORD: this.state.pass
             }
 
-            axios.put(BASE_URL, credenciales).then(response => {
+            axios.put(BASE_URI, credenciales).then(response => {
 
                 if(response.data != null){
+                    AsyncStorage.setItem('userId', response.data.ID.toString())
                     this.props.navigation.navigate('MapClient')
                 }else{
                     alert('Usuario no encontrado o contraseña incorecta...')
@@ -85,10 +87,15 @@ class LoginPage extends Component {
                                 PASSWORD: this.state.pass
                             }
 
-                            axios.post(BASE_URL, credenciales).then(response => {
+                            axios.post(BASE_URI, credenciales).then(response => {
 
                                 if(response.data != null){
-                                    this.props.navigation.navigate('MapClient')
+                                    if(response.data>0){
+                                        AsyncStorage.setItem('userId', response.data.toString())
+                                        this.props.navigation.navigate('MapClient')
+                                    }else{
+                                        alert('Usuario ya se encuentra registrado!')
+                                    }
                                 }else{
                                     alert('Error registrando el usuario')
                                 }
@@ -137,12 +144,7 @@ class LoginPage extends Component {
                         onChangeText={(pass) => this.setState({pass})}
                         autoCapitalize='none'
                         value={this.state.pass}/>
-                    <View style={styles.checkBox}>
-                        <CheckBox
-                        value={this.state.isDriver}
-                        onValueChange={() => this.setState({ isDriver: !this.state.isDriver })}/>
-                        <Text style={styles.checkBoxText}>Ingresar como conductor</Text>
-                    </View>
+
                     <View style={styles.buttonContainer}>
                         <TouchableOpacity style={styles.button}
                             onPress={this.login}>
